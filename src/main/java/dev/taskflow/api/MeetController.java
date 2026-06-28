@@ -2,6 +2,7 @@ package dev.taskflow.api;
 
 import dev.taskflow.api.Dtos.*;
 import dev.taskflow.security.CurrentUser;
+import dev.taskflow.repo.MeetingRepository;
 import io.livekit.server.AccessToken;
 import io.livekit.server.RoomJoin;
 import io.livekit.server.RoomName;
@@ -15,6 +16,11 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/meet")
 public class MeetController {
+    private final MeetingRepository meetings;
+
+    public MeetController(MeetingRepository meetings) {
+        this.meetings = meetings;
+    }
 
     @Value("${livekit.url}") private String lkUrl;
     @Value("${livekit.api-key}") private String lkKey;
@@ -31,6 +37,20 @@ public class MeetController {
     @GetMapping("/{roomId}/token")
     public MeetTokenRes token(@PathVariable String roomId) {
         var me = CurrentUser.require();
+        var meeting = meetings.findByRoomId(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Meeting not found"));
+        if (!meeting.getOrganizerId().equals(me.id()) && !meeting.getParticipantIds().contains(me.id())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+        if (meeting.getScheduledAt() != null) {
+            var now = java.time.Instant.now();
+            if (now.isBefore(meeting.getScheduledAt().minus(java.time.Duration.ofMinutes(15)))) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Meeting is not open yet");
+            }
+            if (now.isAfter(meeting.getScheduledAt().plus(java.time.Duration.ofHours(2)))) {
+                throw new ResponseStatusException(HttpStatus.GONE, "Meeting has expired");
+            }
+        }
         if (lkUrl == null || lkUrl.isBlank() || lkKey == null || lkKey.isBlank() || lkSecret == null || lkSecret.isBlank()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "LiveKit is not configured (LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET).");

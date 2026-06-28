@@ -18,15 +18,19 @@ public class BoardController {
     private final BoardRepository boards;
     private final BoardColumnRepository columns;
     private final TaskRepository tasks;
+    private final NotificationRepository notifications;
+    private final UserRepository users;
 
-    public BoardController(BoardRepository boards, BoardColumnRepository columns, TaskRepository tasks) {
+    public BoardController(BoardRepository boards, BoardColumnRepository columns, TaskRepository tasks,
+                           NotificationRepository notifications, UserRepository users) {
         this.boards = boards; this.columns = columns; this.tasks = tasks;
+        this.notifications = notifications; this.users = users;
     }
 
     @GetMapping("/boards")
     public List<BoardDto> list() {
-        CurrentUser.require();
-        return boards.findAll().stream().map(BoardDto::of).toList();
+        var me = CurrentUser.require();
+        return boards.findAll().stream().map(board -> BoardDto.of(board, me.id())).toList();
     }
 
     @PostMapping("/boards")
@@ -46,16 +50,35 @@ public class BoardController {
         for (int i = 0; i < defaults.length; i++) {
             columns.save(BoardColumnEntity.builder().boardId(b.getId()).name(defaults[i]).position(i).build());
         }
-        return BoardDto.of(b);
+        return BoardDto.of(b, me.id());
     }
 
     @GetMapping("/boards/{id}")
     public BoardDetail get(@PathVariable UUID id) {
-        CurrentUser.require();
+        var me = CurrentUser.require();
         var b = boards.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         var cols = columns.findByBoardIdOrderByPositionAsc(id).stream().map(ColumnDto::of).toList();
         var ts = tasks.findByBoardId(id).stream().map(TaskDto::of).toList();
-        return new BoardDetail(BoardDto.of(b), cols, ts);
+        return new BoardDetail(BoardDto.of(b, me.id()), cols, ts);
+    }
+
+    @PutMapping("/boards/{id}")
+    public BoardDto updateBoard(@PathVariable UUID id, @RequestBody UpdateBoardReq req) {
+        var me = CurrentUser.require();
+        var board = boards.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
+        boolean ownerOrAdmin = board.getOwnerId().equals(me.id()) || me.isAdmin();
+        if (req.name() != null || req.description() != null || req.archived() != null) {
+            if (!ownerOrAdmin) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+            if (req.name() != null && !req.name().isBlank()) board.setName(req.name().trim());
+            if (req.description() != null) board.setDescription(req.description().trim());
+            if (req.archived() != null) board.setArchived(req.archived());
+        }
+        if (req.favorite() != null) {
+            if (req.favorite()) board.getFavoriteByIds().add(me.id());
+            else board.getFavoriteByIds().remove(me.id());
+        }
+        return BoardDto.of(boards.save(board), me.id());
     }
 
     @PostMapping("/boards/{id}/columns")
@@ -109,7 +132,7 @@ public class BoardController {
 
     @PostMapping("/boards/{id}/tasks")
     public TaskDto addTask(@PathVariable UUID id, @RequestBody CreateTaskReq req) {
-        CurrentUser.require();
+        var me = CurrentUser.require();
         if (req.columnId() == null || req.title() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "columnId and title are required");
         }
@@ -124,7 +147,19 @@ public class BoardController {
                 .position(pos)
                 .priority(pr)
                 .assigneeId(req.assigneeId())
+                .assigneeIds(req.assigneeIds() == null ? new java.util.HashSet<>() : new java.util.HashSet<>(req.assigneeIds()))
+                .createdById(me.id())
+                .dueDate(req.dueDate())
                 .build());
+        var assigned = new java.util.HashSet<UUID>(t.getAssigneeIds());
+        if (t.getAssigneeId() != null) assigned.add(t.getAssigneeId());
+        assigned.stream().filter(userId -> !userId.equals(me.id()))
+                .filter(userId -> users.findById(userId).map(user -> !Boolean.FALSE.equals(user.getNotificationsEnabled())).orElse(false))
+                .forEach(userId ->
+                notifications.save(NotificationEntity.builder()
+                        .userId(userId).text("You were assigned to " + t.getTitle())
+                        .type("ASSIGNED").resourceId(t.getId())
+                        .actionUrl("/boards/" + id + "?task=" + t.getId()).build()));
         return TaskDto.of(t);
     }
 }

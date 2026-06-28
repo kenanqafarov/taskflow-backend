@@ -30,7 +30,7 @@ public class AuthController {
         String password = req.password() == null ? "" : req.password();
         UserEntity u = users.findFirstByUsernameIgnoreCaseOrEmailIgnoreCase(usernameOrEmail, usernameOrEmail)
                 .orElse(null);
-        if (u == null || !encoder.matches(password, u.getPasswordHash())) {
+        if (u == null || !u.isActive() || !encoder.matches(password, u.getPasswordHash())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Username or password is incorrect"));
         }
@@ -43,5 +43,37 @@ public class AuthController {
         var p = CurrentUser.require();
         return users.findById(p.id()).map(UserDto::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    @PutMapping("/me")
+    public UserDto updateMe(@RequestBody UpdateProfileReq req) {
+        var principal = CurrentUser.require();
+        UserEntity user = users.findById(principal.id())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (req.username() != null && !req.username().isBlank()
+                && !req.username().trim().equalsIgnoreCase(user.getUsername())) {
+            String username = req.username().trim();
+            if (users.existsByUsername(username)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
+            }
+            user.setUsername(username);
+        }
+        if (req.firstName() != null && !req.firstName().isBlank()) user.setFirstName(req.firstName().trim());
+        if (req.lastName() != null && !req.lastName().isBlank()) user.setLastName(req.lastName().trim());
+        if (req.email() != null) user.setEmail(req.email().trim());
+        if (req.githubUrl() != null) user.setGithubUrl(req.githubUrl().trim());
+        if (req.linkedinUrl() != null) user.setLinkedinUrl(req.linkedinUrl().trim());
+        if (req.avatarUrl() != null) user.setAvatarUrl(req.avatarUrl().trim());
+        if (req.notificationsEnabled() != null) user.setNotificationsEnabled(req.notificationsEnabled());
+        if (req.theme() != null && ("dark".equals(req.theme()) || "light".equals(req.theme()))) {
+            user.setTheme(req.theme());
+        }
+        if (req.newPassword() != null && !req.newPassword().isBlank()) {
+            if (req.currentPassword() == null || !encoder.matches(req.currentPassword(), user.getPasswordHash())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
+            }
+            user.setPasswordHash(encoder.encode(req.newPassword()));
+        }
+        return UserDto.of(users.save(user));
     }
 }

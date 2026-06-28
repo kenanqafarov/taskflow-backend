@@ -29,9 +29,19 @@ public class UserEntity {
     private String linkedinUrl;
     private String avatarUrl;
 
+    @Builder.Default
+    private Boolean notificationsEnabled = true;
+
+    @Column(length = 16)
+    @Builder.Default
+    private String theme = "dark";
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private Role role;
+
+    @Builder.Default
+    private Boolean active = true;
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -40,7 +50,12 @@ public class UserEntity {
     void prePersist() {
         if (createdAt == null) createdAt = Instant.now();
         if (role == null) role = Role.MEMBER;
+        if (active == null) active = true;
+        if (notificationsEnabled == null) notificationsEnabled = true;
+        if (theme == null) theme = "dark";
     }
+
+    public boolean isActive() { return active == null || active; }
 
     public enum Role { SUPER_ADMIN, ADMIN, MEMBER }
 }

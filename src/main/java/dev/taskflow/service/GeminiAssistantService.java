@@ -17,6 +17,8 @@ import java.util.UUID;
 
 @Service
 public class GeminiAssistantService {
+    private static final String ASSISTANT_USERNAME = "tasko_ai";
+
     private final ChatMessageRepository messages;
     private final UserRepository users;
     private final ChatSocketRegistry sockets;
@@ -42,9 +44,11 @@ public class GeminiAssistantService {
     @Async
     public void answerMention(UUID groupId, UUID sourceMessageId) {
         var source = messages.findById(sourceMessageId).orElse(null);
-        if (source == null || source.getContent() == null
-                || !source.getContent().toLowerCase().contains("@tasko_ai")) return;
-        var bot = users.findByUsername("tasko_ai").orElse(null);
+        if (source == null || source.getContent() == null) return;
+        String content = source.getContent().toLowerCase();
+        if (!content.contains("@" + ASSISTANT_USERNAME) && !content.contains("@flowa")) return;
+        var bot = users.findByUsername(ASSISTANT_USERNAME)
+                .or(() -> users.findByUsername("flowa")).orElse(null);
         if (bot == null) return;
 
         String answer;
@@ -96,10 +100,12 @@ public class GeminiAssistantService {
         var sourceDto = new Dtos.ChatMessageDto(source.getId(), source.getGroupId(), source.getSenderId(),
                 sourceSender == null ? null : Dtos.UserDto.of(sourceSender), source.getContent(),
                 source.getType().name(), source.getMeetRoomId(), source.getMediaUrl(),
-                source.getMediaName(), source.getReplyToId(), null, source.getCreatedAt());
+                source.getMediaName(), source.getReplyToId(), null,
+                source.getMentionIds(), source.getCreatedAt());
         var dto = new Dtos.ChatMessageDto(saved.getId(), saved.getGroupId(), saved.getSenderId(),
                 Dtos.UserDto.of(bot), saved.getContent(), saved.getType().name(), null,
-                null, null, saved.getReplyToId(), sourceDto, saved.getCreatedAt());
+                null, null, saved.getReplyToId(), sourceDto,
+                saved.getMentionIds(), saved.getCreatedAt());
         sockets.broadcast(groupId, new Dtos.SocketEvent("message", dto));
     }
 }

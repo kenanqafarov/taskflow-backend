@@ -3,6 +3,8 @@ package dev.taskflow.domain;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -30,6 +32,12 @@ public class ChatMessageEntity {
     private String mediaUrl;
     private String mediaName;
     private UUID replyToId;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "chat_message_mentions", joinColumns = @JoinColumn(name = "message_id"))
+    @Column(name = "user_id")
+    @Builder.Default
+    private Set<UUID> mentionIds = new HashSet<>();
 
     @Column(nullable = false)
     private Instant createdAt;

@@ -3,6 +3,8 @@ package dev.taskflow.domain;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -32,6 +34,14 @@ public class TaskEntity {
     private Priority priority;
 
     private UUID assigneeId;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "task_assignees", joinColumns = @JoinColumn(name = "task_id"))
+    @Column(name = "user_id")
+    @Builder.Default
+    private Set<UUID> assigneeIds = new HashSet<>();
+
+    private UUID createdById;
     private Instant dueDate;
 
     @Column(nullable = false)

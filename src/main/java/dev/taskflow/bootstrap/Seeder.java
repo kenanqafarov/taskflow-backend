@@ -40,14 +40,20 @@ public class Seeder implements CommandLineRunner {
                     .build());
         }
         UserEntity bot = users.findByUsername("tasko_ai").orElseGet(() ->
-                users.save(UserEntity.builder()
+                users.findByUsername("flowa").map(legacy -> {
+                    legacy.setUsername("tasko_ai");
+                    legacy.setFirstName("Tasko");
+                    legacy.setLastName("AI");
+                    legacy.setEmail("tasko-ai@local");
+                    return users.save(legacy);
+                }).orElseGet(() -> users.save(UserEntity.builder()
                         .username("tasko_ai")
                         .passwordHash(encoder.encode(UUID.randomUUID().toString()))
                         .firstName("Tasko")
                         .lastName("AI")
                         .email("tasko-ai@local")
                         .role(UserEntity.Role.MEMBER)
-                        .build()));
+                        .build())));
         groups.findAll().forEach(group -> {
             if (group.getMemberIds().add(bot.getId())) groups.save(group);
         });

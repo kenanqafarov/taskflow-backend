@@ -65,7 +65,9 @@ public class UserController {
                 .email(req.email())
                 .githubUrl(req.githubUrl())
                 .linkedinUrl(req.linkedinUrl())
+                .avatarUrl(req.avatarUrl())
                 .role(role)
+                .active(true)
                 .build();
         return UserDto.of(users.save(u));
     }
@@ -93,6 +95,9 @@ public class UserController {
                 UserEntity.Role role = UserEntity.Role.valueOf(req.role());
                 if (role != UserEntity.Role.SUPER_ADMIN) u.setRole(role);
             } catch (IllegalArgumentException ignored) {}
+        }
+        if (req.active() != null && u.getRole() != UserEntity.Role.SUPER_ADMIN) {
+            u.setActive(req.active());
         }
         return UserDto.of(users.save(u));
     }
